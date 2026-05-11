@@ -3,7 +3,7 @@ import { VouchflowError } from '../core/errors.js'
 import { HttpClient } from '../transport/http.js'
 import { bytesToBase64 } from '../core/encoding.js'
 import { canonicalize } from './canonicalize.js'
-import { bytesToBase64url } from '../core/encoding.js'
+import { bytesToBase64url, utf8ToBytes } from '../core/encoding.js'
 import { webauthnGet } from './webauthn-get.js'
 import { performEnroll } from '../enroll/enroll.js'
 import { StateStore } from '../core/state-store.js'
@@ -79,11 +79,25 @@ export async function performSignPayload(
     signal: args.signal,
   })
 
+  // RFC §3: signing_input = SHA-256(canonical_payload_bytes || challenge_bytes).
+  // The WebAuthn ceremony's challenge is base64url(signing_input). Server
+  // verifies the WebAuthn-bound challenge equals that hash — payload binding
+  // is cryptographic, not just server-enforced via payload_sha256.
   const challengeBytes = base64ToBytes(init.challenge)
+  const canonicalBytes = utf8ToBytes(canonicalized)
+  const signingInputBytes = new Uint8Array(canonicalBytes.byteLength + challengeBytes.byteLength)
+  signingInputBytes.set(canonicalBytes, 0)
+  signingInputBytes.set(challengeBytes, canonicalBytes.byteLength)
+  const signingInputAb = new ArrayBuffer(signingInputBytes.byteLength)
+  new Uint8Array(signingInputAb).set(signingInputBytes)
+  const signingInputHash = new Uint8Array(
+    await crypto.subtle.digest('SHA-256', signingInputAb),
+  )
+
   const credentialIds = device.credentials.map((c) => c.credentialId)
   const assertion = await webauthnGet({
     config: ctx.config,
-    challenge: challengeBytes,
+    challenge: signingInputHash,
     credentialIds,
     signal: args.signal,
   }).catch((err: unknown) => {
