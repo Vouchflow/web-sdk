@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Vouchflow Web SDK — E2E harness</title>
+  </head>
+  <body>
+    <h1>Vouchflow Web SDK harness</h1>
+    <p id="status">loading…</p>
+    <script src="/dist/vouchflow.min.js"></script>
+    <script>
+      // The IIFE bundle exposes `Vouchflow` on window. Playwright drives the
+      // page via window.__vf — a thin façade that returns plain JSON values
+      // so they survive structured-clone serialization across CDP.
+      window.__vf = {
+        async configure(c) {
+          const client = window.Vouchflow.Vouchflow.configure(c)
+          await client.forgetAll()
+          window.__vfClient = client
+          return true
+        },
+        async verify(opts) {
+          return await window.__vfClient.verify(opts)
+        },
+        async sign(opts) {
+          return await window.__vfClient.signPayload(opts)
+        },
+        async enroll(opts) {
+          return await window.__vfClient.enroll(opts)
+        },
+        async getEnrollmentState(opts) {
+          return await window.__vfClient.getEnrollmentState(opts)
+        },
+        async forget(opts) {
+          return await window.__vfClient.forget(opts)
+        },
+        async checkSupport() {
+          return await window.__vfClient.checkSupport()
+        },
+        async requestFallback(opts) {
+          return await window.__vfClient.requestFallback(opts)
+        },
+        async completeFallback(opts) {
+          return await window.__vfClient.completeFallback(opts)
+        },
+        async errorCatch(method, ...args) {
+          try {
+            const r = await window.__vfClient[method](...args)
+            return { ok: true, value: r }
+          } catch (err) {
+            return {
+              ok: false,
+              code: err.code,
+              message: err.message,
+              sessionId: err.sessionId,
+            }
+          }
+        },
+      }
+      document.getElementById('status').textContent = 'ready'
+    </script>
+  </body>
+</html>

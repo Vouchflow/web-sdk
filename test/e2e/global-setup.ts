@@ -1,0 +1,173 @@
+import { spawn, ChildProcess } from 'node:child_process'
+import http from 'node:http'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const ROOT = path.resolve(__dirname, '../..')
+
+// Ports the harness server / API server bind to. Override via env to avoid
+// collisions with locally-running dev services.
+const API_PORT = Number(process.env.VF_E2E_API_PORT ?? 18766)
+const HARNESS_PORT = Number(process.env.VF_E2E_HARNESS_PORT ?? 14173)
+const API_BASE = `http://localhost:${API_PORT}`
+const HARNESS_BASE = `http://localhost:${HARNESS_PORT}`
+
+let apiServer: ChildProcess | null = null
+let harnessServer: http.Server | null = null
+
+async function buildSdk() {
+  // Ensure dist/ is fresh before serving it.
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('npx', ['tsup'], { cwd: ROOT, stdio: 'inherit' })
+    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`tsup exited ${code}`))))
+  })
+}
+
+async function waitForUrl(url: string, timeoutMs = 30_000): Promise<void> {
+  const start = Date.now()
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const res = await fetch(url)
+      if (res.status < 500) return
+    } catch {
+      // retry
+    }
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  throw new Error(`Timed out waiting for ${url}`)
+}
+
+function startHarnessServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const harnessDir = path.join(__dirname, 'harness')
+    const distDir = path.join(ROOT, 'dist/umd')
+    const server = http.createServer((req, res) => {
+      const urlPath = (req.url ?? '/').split('?')[0]
+      let filePath: string
+      if (urlPath === '/' || urlPath === '/index.html') {
+        filePath = path.join(harnessDir, 'index.html')
+      } else if (urlPath?.startsWith('/dist/')) {
+        filePath = path.join(distDir, urlPath.replace('/dist/', ''))
+      } else {
+        filePath = path.join(harnessDir, urlPath ?? '')
+      }
+      fs.readFile(filePath, (err, data) => {
+        if (err) {
+          res.writeHead(404)
+          res.end('not found')
+          return
+        }
+        const ext = path.extname(filePath)
+        const type =
+          ext === '.html' ? 'text/html'
+          : ext === '.js' ? 'application/javascript'
+          : ext === '.map' ? 'application/json'
+          : 'application/octet-stream'
+        res.writeHead(200, { 'content-type': type })
+        res.end(data)
+      })
+    })
+    server.listen(HARNESS_PORT, '127.0.0.1', () => {
+      harnessServer = server
+      resolve()
+    })
+    server.on('error', reject)
+  })
+}
+
+async function ensureApiKey(): Promise<string> {
+  // The E2E suite stamps a sandbox customer + write key directly in Postgres.
+  // We use the same DB the Vouchflow server tests use. Cleans devices/verifications
+  // first so leftover bad-state rows from prior failed runs don't poison the new run.
+  const { PrismaClient } = await import(
+    path.join(ROOT, '..', 'server/api/node_modules/@prisma/client/index.js') as any
+  )
+  const prisma = new PrismaClient()
+  try {
+    // signing_keys is encrypted with VOUCHFLOW_SIGNING_KEY_ENCRYPTION_KEY which
+    // we randomise per run — so leftover rows decrypt-fail. Always start fresh.
+    await prisma.$executeRawUnsafe(
+      'TRUNCATE TABLE "verifications", "devices", "signing_keys" RESTART IDENTITY CASCADE',
+    )
+    const crypto = await import('node:crypto')
+    const id = `cust_e2e_${crypto.randomBytes(4).toString('hex')}`
+    const key = `vsk_sandbox_${crypto.randomBytes(16).toString('hex')}`
+    await prisma.customer.create({
+      data: {
+        id,
+        email: `${id}@test.local`,
+        sandboxWriteKey: key,
+        sandboxReadKey: `vsk_sandbox_read_${crypto.randomBytes(16).toString('hex')}`,
+      },
+    })
+    process.env.VF_E2E_API_KEY = key
+    process.env.VF_E2E_CUSTOMER_ID = id
+    return key
+  } finally {
+    await prisma.$disconnect()
+  }
+}
+
+function startApiServer(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const serverDir = path.join(ROOT, '..', 'server/api')
+    apiServer = spawn('npx', ['tsx', 'src/index.ts'], {
+      cwd: serverDir,
+      env: {
+        ...process.env,
+        API_PORT: String(API_PORT),
+        DATABASE_URL: process.env.DATABASE_URL ?? 'postgres://dev:dev@localhost:5432/vouchflow_test',
+        REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379/4',
+        INTERNAL_HMAC_SECRET: '0'.repeat(64),
+        WEBHOOK_SECRET_ENCRYPTION_KEY: '0'.repeat(64),
+        VOUCHFLOW_SIGNING_KEY_ENCRYPTION_KEY: process.env.VOUCHFLOW_SIGNING_KEY_ENCRYPTION_KEY ?? '0'.repeat(64),
+        SESSION_SECRET: '0'.repeat(64),
+        ADMIN_KEY: '0'.repeat(64),
+        NODE_ENV: 'test',
+      },
+      // Detach so the API server doesn't inherit the bash pipe — otherwise
+      // `npx playwright test | tail` hangs after playwright exits because
+      // the API child still holds the write end. Stdout/stderr go to a log
+      // file so debugging is still possible.
+      stdio: ['ignore', fs.openSync(path.join(__dirname, '.api.log'), 'w'), fs.openSync(path.join(__dirname, '.api.log'), 'a')],
+      detached: true,
+    })
+    apiServer.unref()
+    apiServer.on('exit', (code, signal) => {
+      if (code !== 0 && code !== null) {
+        reject(new Error(`API server exited with ${code} signal=${signal}`))
+      }
+    })
+    // poll
+    waitForUrl(`${API_BASE}/health`)
+      .then(() => resolve())
+      .catch(reject)
+  })
+}
+
+export default async function globalSetup() {
+  await buildSdk()
+  await startHarnessServer()
+  await startApiServer()
+  const apiKey = await ensureApiKey()
+  process.env.VF_E2E_API_BASE = API_BASE
+  process.env.VF_E2E_HARNESS_BASE = HARNESS_BASE
+  process.env.VF_E2E_API_KEY = apiKey
+
+  // expose for tests via filesystem so workers can pick it up
+  fs.writeFileSync(
+    path.join(__dirname, '.e2e-env.json'),
+    JSON.stringify({
+      apiBase: API_BASE,
+      harnessBase: HARNESS_BASE,
+      apiKey,
+      customerId: process.env.VF_E2E_CUSTOMER_ID,
+    }),
+  )
+}
+
+export function getServers() {
+  return { apiServer, harnessServer }
+}

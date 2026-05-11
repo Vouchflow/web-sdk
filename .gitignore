@@ -1,0 +1,20 @@
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+.env
+.env.local
+*.log
+
+# Playwright artifacts
+playwright-report/
+test-results/
+test/e2e/.api.log
+test/e2e/.e2e-env.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
