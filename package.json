@@ -1,12 +1,15 @@
 {
   "name": "@vouchflow/web",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Vouchflow Web SDK — passkey-backed device verification and high-assurance payload signing for browsers.",
   "license": "MIT",
-  "homepage": "https://vouchflow.dev",
+  "homepage": "https://vouchflow.dev/docs/web-sdk",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vouchflow/vouchflow"
+    "url": "git+https://github.com/Vouchflow/web-sdk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Vouchflow/web-sdk/issues"
   },
   "type": "module",
   "main": "./dist/index.cjs",
