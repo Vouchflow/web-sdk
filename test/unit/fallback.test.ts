@@ -118,4 +118,38 @@ describe('email OTP fallback', () => {
     const body = JSON.parse(fetchMock.mock.calls[0]![1].body)
     expect(body.device_token).toBe('dvt_zzz')
   })
+
+  it('passes AbortSignal and device_token when completing fallback', async () => {
+    const ac = new AbortController()
+    await store.put({
+      userHandle: 'u',
+      deviceId: 'dvt_complete',
+      credentials: [
+        {
+          credentialId: 'cred',
+          enrolledAt: '2026',
+          attestationLevel: 'hardware',
+          transports: [],
+        },
+      ],
+      lastVerifiedAt: null,
+      configuredRpId: 'test.local',
+      schemaVersion: 1,
+    })
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ verified: true, confidence: 'low', session_state: 'FALLBACK_COMPLETE' }),
+        { status: 200 },
+      ),
+    )
+    const http = createHttpClient(config)
+    await performCompleteFallback(
+      { config, http, store },
+      { sessionId: 'fbs_xyz', code: '123456', signal: ac.signal },
+      'u',
+    )
+    const [, init] = fetchMock.mock.calls[0]!
+    expect(init.signal).toBe(ac.signal)
+    expect(JSON.parse(init.body).device_token).toBe('dvt_complete')
+  })
 })

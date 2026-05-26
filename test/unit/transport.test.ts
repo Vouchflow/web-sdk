@@ -70,6 +70,7 @@ describe('createHttpClient: error mapping', () => {
     const http = createHttpClient(BASE_CONFIG)
     await expect(http.request({ method: 'GET', path: '/x' })).rejects.toMatchObject({
       code: 'rate_limit_exceeded',
+      retryable: true,
     })
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })

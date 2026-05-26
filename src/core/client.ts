@@ -155,27 +155,32 @@ class VouchflowClient {
     const out = await this.withCeremonyLock(() =>
       performEnroll(
         { config: this.config, http: this.http, store: this.store },
-        { userHandle: opts.userHandle, forceNew: opts.forceNew },
+        { userHandle: opts.userHandle, forceNew: opts.forceNew, signal: opts.signal },
       ),
     )
     return { deviceToken: out.device.deviceId }
   }
 
   async requestFallback(opts: RequestFallbackOptions): Promise<RequestFallbackResult> {
+    await this.ensureEnvFingerprint()
     return performRequestFallback(
       { config: this.config, http: this.http, store: this.store },
       opts,
+      opts.userHandle,
     )
   }
 
   async completeFallback(opts: CompleteFallbackOptions): Promise<CompleteFallbackResult> {
+    await this.ensureEnvFingerprint()
     return performCompleteFallback(
       { config: this.config, http: this.http, store: this.store },
       opts,
+      opts.userHandle,
     )
   }
 
   async getEnrollmentState(opts: { userHandle?: string } = {}): Promise<EnrollmentState> {
+    await this.ensureEnvFingerprint()
     const userHandle = opts.userHandle ?? DEFAULT_USER_HANDLE
     const dev = await this.store.get(userHandle)
     if (!dev) {
@@ -190,10 +195,12 @@ class VouchflowClient {
   }
 
   async forget(opts: ForgetOptions): Promise<void> {
+    await this.ensureEnvFingerprint()
     await this.store.delete(opts.userHandle)
   }
 
   async forgetAll(): Promise<void> {
+    await this.ensureEnvFingerprint()
     await this.store.clear()
   }
 

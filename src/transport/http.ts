@@ -104,12 +104,12 @@ export function createHttpClient(config: ResolvedConfig): HttpClient {
           const ve = new VouchflowError({
             code,
             message: serverError.error?.message ?? `HTTP ${res.status}`,
-            retryable: res.status >= 500,
+            retryable: res.status >= 500 || res.status === 429,
           })
           // 5xx and 429 are retryable. Everything else is terminal.
           if (res.status >= 500 || res.status === 429) {
             lastErr = ve
-            await sleep(backoffDelay(attempt))
+            if (attempt < maxAttempts - 1) await sleep(backoffDelay(attempt), opts.signal)
             continue
           }
           throw ve
@@ -125,7 +125,7 @@ export function createHttpClient(config: ResolvedConfig): HttpClient {
             retryable: true,
             cause: err,
           })
-          await sleep(backoffDelay(attempt))
+          if (attempt < maxAttempts - 1) await sleep(backoffDelay(attempt), opts.signal)
         }
       }
       throw lastErr ?? new VouchflowError({ code: 'network_error', message: 'Request failed' })
@@ -139,6 +139,19 @@ function backoffDelay(attempt: number): number {
   return base * (0.5 + Math.random())
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(new VouchflowError({ code: 'aborted', message: 'Request aborted' }))
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms)
+    signal?.addEventListener(
+      'abort',
+      () => {
+        clearTimeout(timer)
+        reject(new VouchflowError({ code: 'aborted', message: 'Request aborted' }))
+      },
+      { once: true },
+    )
+  })
 }

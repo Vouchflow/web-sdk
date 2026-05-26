@@ -20,6 +20,10 @@ describe('validateConfig: valid input', () => {
     const r = validateConfig({ ...valid, apiBaseUrl: 'https://api.test.local/' })
     expect(r.apiBaseUrl).toBe('https://api.test.local')
   })
+  it('accepts localhost http base URLs for e2e/dev', () => {
+    const r = validateConfig({ ...valid, apiBaseUrl: 'http://localhost:18766/api/' })
+    expect(r.apiBaseUrl).toBe('http://localhost:18766/api')
+  })
   it('accepts custom apiVersion', () => {
     const r = validateConfig({ ...valid, apiVersion: '2027-01-01' })
     expect(r.apiVersion).toBe('2027-01-01')
@@ -44,6 +48,13 @@ describe('validateConfig: errors', () => {
   })
   it('rejects empty rpName', () => {
     expect(() => validateConfig({ ...valid, rpName: '' })).toThrow(VouchflowError)
+  })
+  it('rejects non-http apiBaseUrl values', () => {
+    expect(() => validateConfig({ ...valid, apiBaseUrl: 'javascript:alert(1)' })).toThrow(VouchflowError)
+  })
+  it('rejects apiBaseUrl with query or fragment', () => {
+    expect(() => validateConfig({ ...valid, apiBaseUrl: 'https://api.test.local?x=1' })).toThrow(VouchflowError)
+    expect(() => validateConfig({ ...valid, apiBaseUrl: 'https://api.test.local#x' })).toThrow(VouchflowError)
   })
   it('attaches code=invalid_config', () => {
     try {

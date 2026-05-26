@@ -80,6 +80,7 @@ export async function performRequestFallback(
       email_hash: emailHash,
       reason: REASON_MAP[args.reason] ?? args.reason,
     },
+    signal: args.signal,
   })
 
   return {
@@ -110,6 +111,7 @@ export async function performCompleteFallback(
     method: 'POST',
     path: `/v1/verify/${args.sessionId}/complete`,
     body: { device_token: deviceToken, otp: args.code },
+    signal: args.signal,
   })
 
   if (!resp.verified) {

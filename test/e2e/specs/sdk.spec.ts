@@ -116,7 +116,8 @@ test.describe('Web SDK end-to-end', () => {
     expect(signed.confidence).toMatch(/^(high|medium)$/)
 
     // Pull JWKS from the API directly and verify the signed JWS.
-    const jwksRes = await fetch(`${env.apiBase}/v1/.well-known/jwks.json`)
+    const jwksRes = await fetch(`${env.apiBase}/.well-known/jwks.json`)
+    expect(jwksRes.ok).toBe(true)
     const { keys } = (await jwksRes.json()) as { keys: any[] }
     expect(keys.length).toBeGreaterThan(0)
 

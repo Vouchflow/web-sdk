@@ -49,7 +49,32 @@ export function validateConfig(config: VouchflowConfig): ResolvedConfig {
     environment: config.environment,
     rpId: config.rpId,
     rpName: config.rpName,
-    apiBaseUrl: (config.apiBaseUrl ?? DEFAULT_API_BASE_URL).replace(/\/+$/, ''),
+    apiBaseUrl: normalizeApiBaseUrl(config.apiBaseUrl ?? DEFAULT_API_BASE_URL),
     apiVersion: config.apiVersion ?? DEFAULT_API_VERSION,
   }
+}
+
+function normalizeApiBaseUrl(value: string): string {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new VouchflowError({
+      code: 'invalid_config',
+      message: 'apiBaseUrl must be a valid http(s) URL',
+    })
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+    throw new VouchflowError({
+      code: 'invalid_config',
+      message: 'apiBaseUrl must use http or https',
+    })
+  }
+  if (url.search || url.hash) {
+    throw new VouchflowError({
+      code: 'invalid_config',
+      message: 'apiBaseUrl must not include query parameters or a fragment',
+    })
+  }
+  return value.replace(/\/+$/, '')
 }

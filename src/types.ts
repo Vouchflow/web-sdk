@@ -86,6 +86,9 @@ export interface RequestFallbackOptions {
   sessionId: string
   email: string
   reason: FallbackReason
+  /** Attach the stored device token for this user when available. */
+  userHandle?: string
+  signal?: AbortSignal
 }
 
 export interface RequestFallbackResult {
@@ -97,6 +100,9 @@ export interface RequestFallbackResult {
 export interface CompleteFallbackOptions {
   sessionId: string
   code: string
+  /** Attach the stored device token for this user when available. */
+  userHandle?: string
+  signal?: AbortSignal
 }
 
 export interface CompleteFallbackResult {
@@ -125,6 +131,8 @@ export interface EnrollOptions {
   userHandle: string
   /** Force a fresh credential even if one already exists. */
   forceNew?: boolean
+  /** Cancel the in-flight enrollment ceremony/request. */
+  signal?: AbortSignal
 }
 
 export interface ForgetOptions {
