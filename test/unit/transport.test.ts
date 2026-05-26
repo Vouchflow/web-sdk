@@ -39,7 +39,7 @@ describe('createHttpClient: success path', () => {
   it('skips authorization when authenticated=false', async () => {
     fetchMock.mockResolvedValueOnce(new Response('{}', { status: 200 }))
     const http = createHttpClient(BASE_CONFIG)
-    await http.request({ method: 'GET', path: '/v1/.well-known/jwks.json', authenticated: false })
+    await http.request({ method: 'GET', path: '/.well-known/jwks.json', authenticated: false })
     const init = fetchMock.mock.calls[0]![1]
     expect(init.headers['authorization']).toBeUndefined()
   })

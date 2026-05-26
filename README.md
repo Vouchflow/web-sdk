@@ -84,7 +84,7 @@ import { jwtVerify, createRemoteJWKSet } from 'jose'
 import crypto from 'node:crypto'
 
 const JWKS = createRemoteJWKSet(
-  new URL('https://api.vouchflow.dev/v1/.well-known/jwks.json'),
+  new URL('https://api.vouchflow.dev/.well-known/jwks.json'),
 )
 
 export async function verifyVouchflowAssertion(
