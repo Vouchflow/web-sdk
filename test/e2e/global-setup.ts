@@ -93,28 +93,8 @@ async function ensureApiKey(): Promise<string> {
     path.join(API_SERVER_DIR, 'node_modules/@prisma/client/index.js') as any
   )
   const prisma = new PrismaClient()
-  // Flush the test Redis DB so per-email/per-IP fallback rate-limit counters
-  // from prior runs don't accumulate and fail subsequent runs at 429.
-  const Redis = (await import(
-    path.join(API_SERVER_DIR, 'node_modules/ioredis/built/index.js') as any
-  )).default
-  const redis = new Redis(process.env.REDIS_URL, {
-    lazyConnect: true,
-    maxRetriesPerRequest: 1,
-    retryStrategy: () => null,
-  })
-  redis.on('error', () => {
-    // Redis is only flushed to avoid stale rate-limit counters. The API
-    // health check below is the authoritative readiness gate.
-  })
-  try {
-    await redis.connect()
-    await redis.flushdb()
-  } catch {
-    // best-effort
-  } finally {
-    redis.disconnect()
-  }
+  // The server dropped Redis (rate-limit counters no longer live there), so
+  // there is nothing to flush — the DB TRUNCATE below is the sole state reset.
   try {
     // signing_keys is encrypted with VOUCHFLOW_SIGNING_KEY_ENCRYPTION_KEY which
     // we randomise per run — so leftover rows decrypt-fail. Always start fresh.
