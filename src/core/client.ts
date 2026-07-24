@@ -21,6 +21,7 @@ import { createHttpClient, HttpClient } from '../transport/http.js'
 import { performEnroll } from '../enroll/enroll.js'
 import { performVerify } from '../verify/verify.js'
 import { performSignPayload } from '../verify/sign.js'
+import { webauthnGet } from '../verify/webauthn-get.js'
 import {
   performCompleteFallback,
   performRequestFallback,
@@ -159,6 +160,30 @@ class VouchflowClient {
       ),
     )
     return { deviceToken: out.device.deviceId }
+  }
+
+  async evaluatePrf(opts: { salt: Uint8Array; userHandle?: string }): Promise<Uint8Array> {
+    requireBrowser()
+    await this.ensureEnvFingerprint()
+    return this.withCeremonyLock(async () => {
+      const userHandle = opts.userHandle ?? DEFAULT_USER_HANDLE
+      const device = await this.store.get(userHandle)
+      const challenge = new Uint8Array(32)
+      crypto.getRandomValues(challenge)
+      const { prfResult } = await webauthnGet({
+        config: this.config,
+        challenge,
+        credentialIds: device?.credentials.map((c) => c.credentialId) ?? [],
+        prfSalt: opts.salt,
+      })
+      if (!prfResult) {
+        throw new VouchflowError({
+          code: 'prf_unsupported',
+          message: 'This passkey does not support the WebAuthn PRF extension.',
+        })
+      }
+      return new Uint8Array(prfResult)
+    })
   }
 
   async requestFallback(opts: RequestFallbackOptions): Promise<RequestFallbackResult> {

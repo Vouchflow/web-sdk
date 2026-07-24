@@ -9,6 +9,7 @@ export type VouchflowErrorCode =
   // Browser capability
   | 'webauthn_unavailable'
   | 'platform_authenticator_unavailable'
+  | 'prf_unsupported'
   // User interaction
   | 'biometric_cancelled'
   | 'biometric_failed'

@@ -47,7 +47,8 @@ export async function webauthnCreate(opts: CreateOptions): Promise<CreateResult>
       userVerification: 'required',
     },
     attestation: 'direct',
-    extensions: { credProps: true },
+    // Existing credentials may not support PRF; no migration is required.
+    extensions: { credProps: true, prf: {} } as any,
     timeout: 60_000,
   }
 

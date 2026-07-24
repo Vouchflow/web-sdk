@@ -10,6 +10,7 @@ export interface GetOptions {
   signal?: AbortSignal
   /** When true, sets mediation: "conditional" for passkey autofill. */
   conditional?: boolean
+  prfSalt?: Uint8Array
 }
 
 export interface GetResult {
@@ -18,6 +19,7 @@ export interface GetResult {
   clientDataJSON: ArrayBuffer
   signature: ArrayBuffer
   userHandle: ArrayBuffer | null
+  prfResult?: ArrayBuffer
 }
 
 export async function webauthnGet(opts: GetOptions): Promise<GetResult> {
@@ -39,6 +41,9 @@ export async function webauthnGet(opts: GetOptions): Promise<GetResult> {
     challenge: toArrayBuffer(opts.challenge),
     allowCredentials,
     userVerification: 'required',
+    extensions: opts.prfSalt
+      ? { prf: { eval: { first: toArrayBuffer(opts.prfSalt) } } } as any
+      : undefined,
     timeout: 60_000,
   }
 
@@ -61,12 +66,14 @@ export async function webauthnGet(opts: GetOptions): Promise<GetResult> {
   }
 
   const response = cred.response as AuthenticatorAssertionResponse
+  const prfResult = (cred.getClientExtensionResults() as any).prf?.results?.first
   return {
     credentialId: bufferToBase64url(cred.rawId),
     authenticatorData: response.authenticatorData,
     clientDataJSON: response.clientDataJSON,
     signature: response.signature,
     userHandle: response.userHandle,
+    prfResult,
   }
 }
 
