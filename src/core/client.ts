@@ -145,6 +145,7 @@ class VouchflowClient {
           userHandle: opts.userHandle,
           minConfidence: opts.minConfidence,
           signal: opts.signal,
+          prfSalt: opts.prfSalt,
         },
       ),
     )

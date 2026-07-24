@@ -58,6 +58,10 @@ export interface SignOptions {
   /** Default `high` for signPayload — payload signing is high-assurance by default. */
   minConfidence?: Confidence
   signal?: AbortSignal
+  /** When set, the WebAuthn PRF extension is evaluated in the SAME assertion
+   *  that signs the payload — one ceremony yields both the signature and the
+   *  PRF secret instead of two separate Face-ID/Touch-ID prompts. */
+  prfSalt?: Uint8Array
 }
 
 export interface SignResult {
@@ -75,6 +79,8 @@ export interface SignResult {
   /** JWS bundle signed by Vouchflow — what customers verify against `/.well-known/jwks.json`. */
   assertion: string
   sessionId: string
+  /** WebAuthn PRF extension output (32 bytes), present only when `prfSalt` was supplied. */
+  prfResult?: Uint8Array
 }
 
 export type FallbackReason =

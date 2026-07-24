@@ -1,6 +1,6 @@
 {
   "name": "@vouchflow/web",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Vouchflow Web SDK — passkey-backed device verification and high-assurance payload signing for browsers.",
   "license": "MIT",
   "homepage": "https://vouchflow.dev/docs/web-sdk",

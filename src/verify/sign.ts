@@ -21,6 +21,7 @@ export interface SignArgs {
   userHandle?: string
   minConfidence?: Confidence
   signal?: AbortSignal
+  prfSalt?: Uint8Array
 }
 
 interface InitiateResponse {
@@ -100,6 +101,7 @@ export async function performSignPayload(
     challenge: signingInputHash,
     credentialIds,
     signal: args.signal,
+    prfSalt: args.prfSalt,
   }).catch((err: unknown) => {
     if (err instanceof VouchflowError) {
       if (err.code === 'biometric_cancelled' || err.code === 'biometric_failed') {
@@ -145,6 +147,7 @@ export async function performSignPayload(
     confidence: complete.confidence,
     assertion: complete.assertion,
     sessionId: complete.session_id,
+    prfResult: assertion.prfResult ? new Uint8Array(assertion.prfResult) : undefined,
   }
 }
 
