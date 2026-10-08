@@ -43,6 +43,7 @@ export async function performEnroll(
   ctx: EnrollContext,
   args: EnrollArgs,
 ): Promise<EnrollOutput> {
+  const existing = await ctx.store.get(args.userHandle)
   // Generate a fresh challenge client-side. The /v1/enroll endpoint accepts
   // any unique idempotency_key — the WebAuthn challenge is bound by being
   // included in the clientDataJSON the server validates against the
@@ -53,6 +54,7 @@ export async function performEnroll(
     config: ctx.config,
     userHandle: args.userHandle,
     challenge,
+    excludeCredentialIds: existing?.credentials.map((c) => c.credentialId) ?? [],
     requirePlatformAuthenticator: false,  // Allow security-key fallback by default
     signal: args.signal,
   })
@@ -68,7 +70,6 @@ export async function performEnroll(
   // extracts from authData. (See server/api/src/routes/enroll.ts: the
   // webauthn_attestation path overrides effectivePublicKey.)
   const idempotencyKey = `ek_${bytesToBase64url(randomBytes(16))}`
-  const existing = await ctx.store.get(args.userHandle)
   const reuseDeviceToken = !args.forceNew ? existing?.deviceId : undefined
 
   const body: Record<string, unknown> = {

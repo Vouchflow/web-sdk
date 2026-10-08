@@ -134,10 +134,18 @@ export interface EnrollmentState {
 }
 
 export interface EnrollOptions {
-  userHandle: string
+  /** Local record key. Defaults to `__default__`. */
+  userHandle?: string
   /** Force a fresh credential even if one already exists. */
   forceNew?: boolean
   /** Cancel the in-flight enrollment ceremony/request. */
+  signal?: AbortSignal
+}
+
+export interface RecoverOptions {
+  /** Local record key. Defaults to `__default__`. */
+  userHandle?: string
+  /** Cancel the in-flight recovery ceremony/request. */
   signal?: AbortSignal
 }
 

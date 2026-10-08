@@ -55,7 +55,10 @@ test.describe('Web SDK end-to-end', () => {
     )
     expect(configResult).toBe(true)
 
-    // 1. First call: auto-enrolls and verifies
+    await page.evaluate(async () =>
+      (window as any).__vf.enroll({ userHandle: 'e2e_user_a', forceNew: true }),
+    )
+
     const verify1 = await page.evaluate(async () => {
       return await (window as any).__vf.verify({
         context: 'signup',
@@ -67,7 +70,6 @@ test.describe('Web SDK end-to-end', () => {
     expect(verify1.sessionId).toMatch(/^ses_/)
     expect(['high', 'medium']).toContain(verify1.confidence)
 
-    // 2. Second call: re-uses enrollment, hits the verify path only
     const verify2 = await page.evaluate(async () => {
       return await (window as any).__vf.verify({
         context: 'login',
@@ -77,7 +79,6 @@ test.describe('Web SDK end-to-end', () => {
     expect(verify2.verified).toBe(true)
     expect(verify2.deviceToken).toBe(verify1.deviceToken)
 
-    // 3. State is persisted
     const state = await page.evaluate(async () =>
       await (window as any).__vf.getEnrollmentState({ userHandle: 'e2e_user_a' }),
     )
@@ -99,6 +100,10 @@ test.describe('Web SDK end-to-end', () => {
         rpName: 'E2E Harness',
         apiBaseUrl: env.apiBase,
       },
+    )
+
+    await page.evaluate(async () =>
+      (window as any).__vf.enroll({ userHandle: 'e2e_signer', forceNew: true }),
     )
 
     const payload = { v: 1, id: 'mand_e2e', scope: 'send', amount: 500 }
@@ -184,7 +189,7 @@ test.describe('Web SDK end-to-end', () => {
     const result = await page.evaluate(async () => {
       // Manually drive a verify session through the API to get a session_id.
       // (Mirrors what `verify()` does internally up to the biometric step.)
-      const enroll = await (window as any).__vf.enroll({ userHandle: 'fb_user' })
+      const enroll = await (window as any).__vf.enroll({ userHandle: 'fb_user', forceNew: true })
       const res = await fetch(`${(window as any).__vfClient.config.apiBaseUrl}/v1/verify`, {
         method: 'POST',
         headers: {
@@ -242,7 +247,7 @@ test.describe('Web SDK end-to-end', () => {
     expect(['aborted', 'biometric_cancelled', 'network_error']).toContain(result.code)
   })
 
-  test('verify with userVerified=false surfaces biometric_cancelled', async ({ page }) => {
+  test('verify with userVerified=false requires passkey recovery', async ({ page }) => {
     // Authenticator that refuses UV → simulates a user cancelling Face ID
     await addVirtualAuthenticator(page, { userVerified: false })
     await page.goto(env.harnessBase)
@@ -258,11 +263,23 @@ test.describe('Web SDK end-to-end', () => {
         apiBaseUrl: env.apiBase,
       },
     )
+    // This case exercises the browser's cancelled assertion, independently of
+    // the API server's recovery endpoint.
+    await page.route(`${env.apiBase}/v1/device/recover/initiate`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session_id: 'rec_cancel',
+          challenge: btoa('01234567890123456789012345678901'),
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      })
+    })
     const out = await page.evaluate(async () =>
       (window as any).__vf.errorCatch('verify', { context: 'signup', userHandle: 'cancel_user' }),
     )
     expect(out.ok).toBe(false)
-    // Could be biometric_cancelled (NotAllowedError) or enrollment_failed.
-    expect(['biometric_cancelled', 'enrollment_failed', 'invalid_signature']).toContain(out.code)
+    expect(out.code).toBe('passkey_recovery_required')
   })
 })

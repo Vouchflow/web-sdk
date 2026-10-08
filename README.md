@@ -9,7 +9,7 @@ Passkey-backed device verification and high-assurance payload signing for browse
 
 - Zero runtime dependencies for the core
 - TypeScript-first; full types ship in the package
-- 6.8 KB gzipped UMD, 9 KB ESM
+- UMD bundle size checked in CI
 - React entry point at `@vouchflow/web/react` (opt-in)
 - Compatible with strict CSP — no `eval`, no inline scripts
 
@@ -49,7 +49,16 @@ const result = await Vouchflow.shared.verify({
 // result.sessionId     — matches webhook session_id
 ```
 
-Enrollment is automatic on first `verify()`. Call `enroll({ userHandle, forceNew: true })` only when you need to add a backup credential.
+On first `verify()` or `signPayload()`, the SDK looks for an existing discoverable passkey and restores its device record. `enroll()` also recovers first. If recovery is cancelled, times out, finds no matching user handle, or finds a passkey without an active device, these calls throw `passkey_recovery_required` and do not create a credential. This protects a passkey that exists on the device when this browser has no IndexedDB record, such as in a new browser or after site data was cleared.
+
+To restore the record explicitly, call `recover()`:
+
+```ts
+const recovered = await Vouchflow.shared.recover({ userHandle: 'user_abc' })
+if (recovered) console.log(recovered.deviceToken)
+```
+
+`recover()` returns `null` if there is no usable passkey, the selected passkey belongs to another user handle, or the presented passkey has no active Vouchflow web device for this API key's customer and app. Other errors, including an invalid signature or network failure, are thrown. The `userHandle` defaults to `__default__`; use the same value across enrollment, recovery, verification, and signing. For a new user, ask for explicit confirmation before calling `enroll({ userHandle, forceNew: true })`; only that option creates a credential. Creation excludes credential IDs already known to this browser.
 
 ## High-assurance payload signing
 
@@ -150,7 +159,7 @@ function SignInButton() {
 
 ## Email fallback
 
-When WebAuthn is unavailable, cancelled, or fails, request an email OTP. The session ID flows through the thrown error.
+When a verification ceremony is cancelled or fails after a session starts, you can request an email OTP using the session ID in the thrown error. A `passkey_recovery_required` error has no fallback session ID; handle it as described in [Error handling](#error-handling).
 
 ```ts
 import { Vouchflow, VouchflowError } from '@vouchflow/web'
@@ -160,12 +169,12 @@ try {
 } catch (err) {
   if (
     err instanceof VouchflowError &&
+    err.sessionId &&
     (err.code === 'biometric_cancelled' ||
-     err.code === 'biometric_failed' ||
-     err.code === 'webauthn_unavailable')
+     err.code === 'biometric_failed')
   ) {
     const fb = await Vouchflow.shared.requestFallback({
-      sessionId: err.sessionId!,
+      sessionId: err.sessionId,
       email: 'user@example.com',
       reason: 'biometric_failed',
     })
@@ -201,17 +210,18 @@ All errors are instances of `VouchflowError` with a discriminated `code` field. 
 | --- | --- |
 | `invalid_config` | Fix at init (most often an rpId mismatch with the current origin) |
 | `not_configured` | Call `Vouchflow.configure()` before `Vouchflow.shared` |
-| `not_in_browser` | Don't call `verify()`/`signPayload()` from Node / SSR |
+| `not_in_browser` | See [Browser support](#browser-support) for browser-only calls |
 | `webauthn_unavailable` | Offer email fallback |
 | `platform_authenticator_unavailable` | Offer security-key or email fallback |
 | `biometric_cancelled` | Offer retry; `err.sessionId` is set |
 | `biometric_failed` | Offer fallback using `err.sessionId` |
+| `passkey_recovery_required` | Recovery was inconclusive (`err.reason` is `not_found_or_cancelled` or `unregistered_passkey`); retry recovery or get explicit confirmation before `enroll({ forceNew: true })` |
 | `concurrent_ceremony` | Another tab is mid-verify; WebAuthn is exclusive per origin |
 | `enrollment_failed` | Usually transient — retry |
-| `invalid_signature` | Clear state and re-enroll |
+| `invalid_signature` | Retry or investigate the rejected assertion; preserve the existing passkey |
 | `challenge_expired` | Retry; SDK normally fires within ms |
 | `challenge_already_used` | Atomic guard tripped — retry from scratch |
-| `device_not_found` | Local state stale — `forget()` and re-enroll |
+| `device_not_found` | Local state may be stale — retry recovery or contact support |
 | `minimum_confidence_unmet` | Block or degrade; `err.actualConfidence` is set |
 | `rate_limit_exceeded` | Back off and retry |
 | `unauthorized` | Wrong API-key prefix or scope |
@@ -232,21 +242,15 @@ All errors are instances of `VouchflowError` with a discriminated `code` field. 
 
 WebAuthn refuses to run over `http://` outside `localhost`. Make sure staging and preview environments have valid TLS.
 
-In Node.js / SSR, `verify()` and `signPayload()` throw `not_in_browser`. The package is import-safe in SSR — only the active call sites need a real browser.
+In Node.js / SSR, `verify()`, `signPayload()`, `enroll()`, and `recover()` throw `not_in_browser`. The package is import-safe in SSR — only the active call sites need a real browser.
 
 ## Bundle size
 
-| Build | Size (gzipped) |
-| --- | --- |
-| UMD (`dist/umd/vouchflow.min.js`) | **6.8 KB** |
-| ESM (`dist/index.js`) | **9 KB** (tree-shakeable) |
-| React entry (`dist/react/index.js`) | +1.4 KB |
+CI fails if the gzipped UMD bundle exceeds 12 KB. The badge at the top of this page shows the current published package size.
 
-CI fails if either core bundle exceeds the configured budget.
+## More documentation
 
-## Spec
-
-The full specification — including architectural rationale, IndexedDB schema, error mapping rules, and the WebAuthn ceremony details — lives at [`docs/spec.md`](./docs/spec.md). Customer-facing docs are at [vouchflow.dev/docs/web-sdk](https://vouchflow.dev/docs/web-sdk).
+Customer-facing docs are at [vouchflow.dev/docs/web-sdk](https://vouchflow.dev/docs/web-sdk).
 
 ## Contributing
 

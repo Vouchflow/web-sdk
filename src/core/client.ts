@@ -7,6 +7,7 @@ import {
   ForgetOptions,
   RequestFallbackOptions,
   RequestFallbackResult,
+  RecoverOptions,
   SignOptions,
   SignResult,
   VerifyConditionalOptions,
@@ -19,6 +20,7 @@ import { VouchflowError } from './errors.js'
 import { createIndexedDBStateStore, StateStore } from './state-store.js'
 import { createHttpClient, HttpClient } from '../transport/http.js'
 import { performEnroll } from '../enroll/enroll.js'
+import { performRecover } from '../enroll/recover.js'
 import { performVerify } from '../verify/verify.js'
 import { performSignPayload } from '../verify/sign.js'
 import { webauthnGet } from '../verify/webauthn-get.js'
@@ -151,16 +153,34 @@ class VouchflowClient {
     )
   }
 
-  async enroll(opts: EnrollOptions): Promise<{ deviceToken: string }> {
+  async enroll(opts: EnrollOptions = {}): Promise<{ deviceToken: string }> {
     requireBrowser()
     await this.ensureEnvFingerprint()
-    const out = await this.withCeremonyLock(() =>
-      performEnroll(
+    return this.withCeremonyLock(async () => {
+      const userHandle = opts.userHandle ?? DEFAULT_USER_HANDLE
+      const ctx = { config: this.config, http: this.http, store: this.store }
+      if (!opts.forceNew) {
+        const recovered = await performRecover(ctx, { userHandle, signal: opts.signal }, true)
+        return { deviceToken: recovered.deviceId }
+      }
+      const out = await performEnroll(
+        ctx,
+        { userHandle, forceNew: opts.forceNew, signal: opts.signal },
+      )
+      return { deviceToken: out.device.deviceId }
+    })
+  }
+
+  async recover(opts: RecoverOptions = {}): Promise<{ deviceToken: string } | null> {
+    requireBrowser()
+    await this.ensureEnvFingerprint()
+    return this.withCeremonyLock(async () => {
+      const device = await performRecover(
         { config: this.config, http: this.http, store: this.store },
-        { userHandle: opts.userHandle, forceNew: opts.forceNew, signal: opts.signal },
-      ),
-    )
-    return { deviceToken: out.device.deviceId }
+        { userHandle: opts.userHandle ?? DEFAULT_USER_HANDLE, signal: opts.signal },
+      )
+      return device ? { deviceToken: device.deviceId } : null
+    })
   }
 
   async evaluatePrf(opts: { salt: Uint8Array; userHandle?: string }): Promise<Uint8Array> {
