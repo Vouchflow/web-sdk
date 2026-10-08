@@ -49,7 +49,7 @@ const result = await Vouchflow.shared.verify({
 // result.sessionId     — matches webhook session_id
 ```
 
-On first `verify()` or `signPayload()`, the SDK looks for an existing discoverable passkey and restores its device record before attempting enrollment. `enroll()` also recovers first. This protects a passkey that exists on the device when this browser has no IndexedDB record, such as in a new browser or after site data was cleared.
+On first `verify()` or `signPayload()`, the SDK looks for an existing discoverable passkey and restores its device record. `enroll()` also recovers first. If recovery is cancelled, times out, finds no matching user handle, or finds a passkey without an active device, these calls throw `passkey_recovery_required` and do not create a credential. This protects a passkey that exists on the device when this browser has no IndexedDB record, such as in a new browser or after site data was cleared.
 
 To restore the record explicitly, call `recover()`:
 
@@ -58,7 +58,7 @@ const recovered = await Vouchflow.shared.recover({ userHandle: 'user_abc' })
 if (recovered) console.log(recovered.deviceToken)
 ```
 
-`recover()` returns `null` if there is no usable passkey or the presented passkey has no active Vouchflow web device for this API key's customer and app. Other errors, including an invalid signature or network failure, are thrown. The `userHandle` defaults to `__default__`; use the same value across enrollment, recovery, verification, and signing. Use `enroll({ userHandle, forceNew: true })` only when you intentionally want a new credential. Creation excludes credential IDs already known to this browser.
+`recover()` returns `null` if there is no usable passkey, the selected passkey belongs to another user handle, or the presented passkey has no active Vouchflow web device for this API key's customer and app. Other errors, including an invalid signature or network failure, are thrown. The `userHandle` defaults to `__default__`; use the same value across enrollment, recovery, verification, and signing. Call `enroll({ userHandle, forceNew: true })` only after explicit user confirmation that a new credential should be created. Creation excludes credential IDs already known to this browser.
 
 ## High-assurance payload signing
 
@@ -215,6 +215,7 @@ All errors are instances of `VouchflowError` with a discriminated `code` field. 
 | `platform_authenticator_unavailable` | Offer security-key or email fallback |
 | `biometric_cancelled` | Offer retry; `err.sessionId` is set |
 | `biometric_failed` | Offer fallback using `err.sessionId` |
+| `passkey_recovery_required` | Recovery was inconclusive (`err.reason` is `not_found_or_cancelled` or `unregistered_passkey`); retry recovery or get explicit confirmation before `enroll({ forceNew: true })` |
 | `concurrent_ceremony` | Another tab is mid-verify; WebAuthn is exclusive per origin |
 | `enrollment_failed` | Usually transient — retry |
 | `invalid_signature` | Retry or investigate the rejected assertion; preserve the existing passkey |

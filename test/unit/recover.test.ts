@@ -22,7 +22,7 @@ function buffer(value: string): ArrayBuffer {
   return result
 }
 
-function assertion(userHandle: ArrayBuffer | null = null): PublicKeyCredential {
+function assertion(userHandle: ArrayBuffer | null = buffer('__default__')): PublicKeyCredential {
   return {
     rawId: buffer('credential'),
     response: {
@@ -151,16 +151,18 @@ describe('passkey device recovery', () => {
     }))
   })
 
-  it('creates a credential when the browser has no passkey', async () => {
+  it('does not create a credential when recovery is cancelled or finds no passkey', async () => {
     get.mockRejectedValue(new DOMException('No passkey', 'NotAllowedError'))
     const store = memoryStore()
     const http = transport()
     const client = Vouchflow.configure(CONFIG, { store, http })
 
-    await expect(client.enroll({})).resolves.toEqual({ deviceToken: 'dvt_new' })
+    await expect(client.enroll({})).rejects.toMatchObject({
+      code: 'passkey_recovery_required',
+      reason: 'not_found_or_cancelled',
+    })
 
-    expect(create).toHaveBeenCalledTimes(1)
-    expect(create.mock.calls[0]![0].publicKey.excludeCredentials).toEqual([])
+    expect(create).not.toHaveBeenCalled()
     expect(http.request).not.toHaveBeenCalledWith(expect.objectContaining({
       path: '/v1/device/recover/complete',
     }))
@@ -221,7 +223,7 @@ describe('passkey device recovery', () => {
   })
 
   it('recovers under the requested local handle and sends the assertion user handle', async () => {
-    get.mockResolvedValue(assertion(buffer('webauthn-user')))
+    get.mockResolvedValue(assertion(buffer('app-user')))
     const store = memoryStore()
     const http = transport()
     const client = Vouchflow.configure(CONFIG, { store, http })
@@ -231,7 +233,7 @@ describe('passkey device recovery', () => {
     expect(store.records.get('app-user')?.deviceId).toBe('dvt_existing')
     expect(http.request).toHaveBeenCalledWith(expect.objectContaining({
       path: '/v1/device/recover/complete',
-      body: expect.objectContaining({ user_handle: btoa('webauthn-user') }),
+      body: expect.objectContaining({ user_handle: btoa('app-user') }),
     }))
     expect(create).not.toHaveBeenCalled()
   })
@@ -262,6 +264,79 @@ describe('passkey device recovery', () => {
     expect(create).not.toHaveBeenCalled()
     expect(http.request).toHaveBeenCalledTimes(1)
   })
+
+  it.each([null, buffer('another-user')])(
+    'does not store a device with a missing or mismatched user handle',
+    async (handle) => {
+      get.mockResolvedValue(assertion(handle))
+      const store = memoryStore()
+      const http = transport()
+      const client = Vouchflow.configure(CONFIG, { store, http })
+
+      await expect(client.recover({ userHandle: 'app-user' })).resolves.toBeNull()
+      expect(store.records.size).toBe(0)
+      expect(http.request).not.toHaveBeenCalledWith(expect.objectContaining({
+        path: '/v1/device/recover/complete',
+      }))
+      expect(create).not.toHaveBeenCalled()
+    },
+  )
+
+  it('refuses automatic creation after selecting another user’s passkey', async () => {
+    get.mockResolvedValue(assertion(buffer('another-user')))
+    const store = memoryStore()
+    const http = transport()
+    const client = Vouchflow.configure(CONFIG, { store, http })
+
+    await expect(client.enroll({ userHandle: 'app-user' })).rejects.toMatchObject({
+      code: 'passkey_recovery_required',
+      reason: 'not_found_or_cancelled',
+    })
+    expect(store.records.size).toBe(0)
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it.each(['enroll', 'verify', 'signPayload'] as const)(
+    '%s refuses automatic creation after an unmatched recovery',
+    async (method) => {
+      const store = memoryStore()
+      const http = transport()
+      const baseRequest = http.request.getMockImplementation()!
+      http.request.mockImplementation(async (opts) => {
+        if (opts.path === '/v1/device/recover/complete') {
+          throw new VouchflowError({ code: 'device_not_found' })
+        }
+        return baseRequest(opts)
+      })
+      const client = Vouchflow.configure(CONFIG, { store, http })
+      const call = method === 'enroll' ? client.enroll() : method === 'verify'
+        ? client.verify({ context: 'login' })
+        : client.signPayload({ context: 'payment', payload: { amount: 100 } })
+
+      await expect(call).rejects.toMatchObject({
+        code: 'passkey_recovery_required',
+        reason: 'unregistered_passkey',
+      })
+      expect(store.records.size).toBe(0)
+      expect(create).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['verify', 'signPayload'] as const)(
+    '%s refuses automatic creation after an ambiguous picker result',
+    async (method) => {
+      get.mockRejectedValue(new DOMException('No passkey', 'NotAllowedError'))
+      const client = Vouchflow.configure(CONFIG, { store: memoryStore(), http: transport() })
+      const call = method === 'verify' ? client.verify({ context: 'login' })
+        : client.signPayload({ context: 'payment', payload: { amount: 100 } })
+
+      await expect(call).rejects.toMatchObject({
+        code: 'passkey_recovery_required',
+        reason: 'not_found_or_cancelled',
+      })
+      expect(create).not.toHaveBeenCalled()
+    },
+  )
 
   it('surfaces invalid signatures instead of enrolling', async () => {
     const http = transport()

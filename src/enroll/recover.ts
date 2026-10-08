@@ -1,5 +1,5 @@
 import { ResolvedConfig } from '../core/config.js'
-import { bytesToBase64, base64ToBytes } from '../core/encoding.js'
+import { bytesToBase64, base64ToBytes, utf8ToBytes } from '../core/encoding.js'
 import { VouchflowError } from '../core/errors.js'
 import { DeviceRecord, StateStore } from '../core/state-store.js'
 import { HttpClient } from '../transport/http.js'
@@ -28,10 +28,23 @@ interface CompleteResponse {
 }
 
 /** Restore the local record using an assertion from a discoverable passkey. */
+export function performRecover(ctx: RecoverContext, args: RecoverArgs, required: true): Promise<DeviceRecord>
+export function performRecover(ctx: RecoverContext, args: RecoverArgs, required?: false): Promise<DeviceRecord | null>
 export async function performRecover(
   ctx: RecoverContext,
   args: RecoverArgs,
+  required = false,
 ): Promise<DeviceRecord | null> {
+  const unavailable = (reason: 'not_found_or_cancelled' | 'unregistered_passkey'): null => {
+    if (required) {
+      throw new VouchflowError({
+        code: 'passkey_recovery_required',
+        reason,
+        message: 'Passkey recovery could not complete. Confirm with the user before creating a new credential.',
+      })
+    }
+    return null
+  }
   const init = await ctx.http.request<InitiateResponse>({
     method: 'POST',
     path: '/v1/device/recover/initiate',
@@ -48,11 +61,18 @@ export async function performRecover(
       signal: args.signal,
     })
   } catch (err) {
-    // NotAllowedError means the platform found no usable passkey or the user
-    // dismissed the picker. The caller decides whether to enroll instead.
     if (err instanceof VouchflowError &&
-        (err.code === 'biometric_cancelled' || err.code === 'biometric_failed')) return null
+        (err.code === 'biometric_cancelled' || err.code === 'biometric_failed')) {
+      return unavailable('not_found_or_cancelled')
+    }
     throw err
+  }
+
+  const actualHandle = assertion.userHandle === null ? null : new Uint8Array(assertion.userHandle)
+  const expectedHandle = utf8ToBytes(args.userHandle)
+  if (!actualHandle || actualHandle.length !== expectedHandle.length ||
+      !actualHandle.every((byte, index) => byte === expectedHandle[index])) {
+    return unavailable('not_found_or_cancelled')
   }
 
   let complete: CompleteResponse
@@ -66,14 +86,14 @@ export async function performRecover(
         client_data_json: bytesToBase64(new Uint8Array(assertion.clientDataJSON)),
         authenticator_data: bytesToBase64(new Uint8Array(assertion.authenticatorData)),
         signed_challenge: bytesToBase64(new Uint8Array(assertion.signature)),
-        ...(assertion.userHandle === null ? {} : {
-          user_handle: bytesToBase64(new Uint8Array(assertion.userHandle)),
-        }),
+        user_handle: bytesToBase64(actualHandle),
       },
       signal: args.signal,
     })
   } catch (err) {
-    if (err instanceof VouchflowError && err.code === 'device_not_found') return null
+    if (err instanceof VouchflowError && err.code === 'device_not_found') {
+      return unavailable('unregistered_passkey')
+    }
     throw err
   }
 

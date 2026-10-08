@@ -8,7 +8,6 @@ import {
   base64urlToBase64,
 } from '../core/encoding.js'
 import { webauthnGet } from './webauthn-get.js'
-import { performEnroll } from '../enroll/enroll.js'
 import { performRecover } from '../enroll/recover.js'
 import { StateStore } from '../core/state-store.js'
 import { Confidence, VerifyResult } from '../types.js'
@@ -61,13 +60,8 @@ export async function performVerify(
   const userHandle = args.userHandle ?? '__default__'
   let device = await ctx.store.get(userHandle)
 
-  // Restore a synced passkey before considering a new enrollment.
   if (!device || device.credentials.length === 0) {
-    device = await performRecover(ctx, { userHandle, signal: args.signal })
-    if (!device) {
-      const enrolled = await performEnroll(ctx, { userHandle, signal: args.signal })
-      device = enrolled.device
-    }
+    device = await performRecover(ctx, { userHandle, signal: args.signal }, true)
   }
 
   if (device.configuredRpId !== ctx.config.rpId) {

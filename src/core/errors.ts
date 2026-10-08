@@ -13,6 +13,7 @@ export type VouchflowErrorCode =
   // User interaction
   | 'biometric_cancelled'
   | 'biometric_failed'
+  | 'passkey_recovery_required'
   | 'concurrent_ceremony'
   // Server-side
   | 'enrollment_failed'
@@ -33,6 +34,7 @@ export type VouchflowErrorCode =
 
 export interface VouchflowErrorOptions {
   code: VouchflowErrorCode
+  reason?: 'not_found_or_cancelled' | 'unregistered_passkey'
   message?: string
   sessionId?: string
   email?: string
@@ -43,6 +45,7 @@ export interface VouchflowErrorOptions {
 
 export class VouchflowError extends Error {
   readonly code: VouchflowErrorCode
+  readonly reason?: 'not_found_or_cancelled' | 'unregistered_passkey'
   readonly sessionId?: string
   readonly email?: string
   readonly actualConfidence?: 'high' | 'medium' | 'low'
@@ -53,6 +56,7 @@ export class VouchflowError extends Error {
     super(opts.message ?? opts.code)
     this.name = 'VouchflowError'
     this.code = opts.code
+    this.reason = opts.reason
     this.sessionId = opts.sessionId
     this.email = opts.email
     this.actualConfidence = opts.actualConfidence

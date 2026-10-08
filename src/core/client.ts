@@ -160,8 +160,8 @@ class VouchflowClient {
       const userHandle = opts.userHandle ?? DEFAULT_USER_HANDLE
       const ctx = { config: this.config, http: this.http, store: this.store }
       if (!opts.forceNew) {
-        const recovered = await performRecover(ctx, { userHandle, signal: opts.signal })
-        if (recovered) return { deviceToken: recovered.deviceId }
+        const recovered = await performRecover(ctx, { userHandle, signal: opts.signal }, true)
+        return { deviceToken: recovered.deviceId }
       }
       const out = await performEnroll(
         ctx,

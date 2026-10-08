@@ -5,7 +5,6 @@ import { bytesToBase64 } from '../core/encoding.js'
 import { canonicalize } from './canonicalize.js'
 import { bytesToBase64url, utf8ToBytes } from '../core/encoding.js'
 import { webauthnGet } from './webauthn-get.js'
-import { performEnroll } from '../enroll/enroll.js'
 import { performRecover } from '../enroll/recover.js'
 import { StateStore } from '../core/state-store.js'
 import { Confidence, SignResult } from '../types.js'
@@ -49,13 +48,8 @@ export async function performSignPayload(
   const userHandle = args.userHandle ?? '__default__'
   let device = await ctx.store.get(userHandle)
 
-  // Restore a synced passkey before considering a new enrollment.
   if (!device || device.credentials.length === 0) {
-    device = await performRecover(ctx, { userHandle, signal: args.signal })
-    if (!device) {
-      const enrolled = await performEnroll(ctx, { userHandle, signal: args.signal })
-      device = enrolled.device
-    }
+    device = await performRecover(ctx, { userHandle, signal: args.signal }, true)
   }
 
   const minConfidence = args.minConfidence ?? 'high'
