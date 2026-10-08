@@ -247,7 +247,7 @@ test.describe('Web SDK end-to-end', () => {
     expect(['aborted', 'biometric_cancelled', 'network_error']).toContain(result.code)
   })
 
-  test('verify with userVerified=false surfaces biometric_cancelled', async ({ page }) => {
+  test('verify with userVerified=false requires passkey recovery', async ({ page }) => {
     // Authenticator that refuses UV → simulates a user cancelling Face ID
     await addVirtualAuthenticator(page, { userVerified: false })
     await page.goto(env.harnessBase)
@@ -263,6 +263,19 @@ test.describe('Web SDK end-to-end', () => {
         apiBaseUrl: env.apiBase,
       },
     )
+    // This case exercises the browser's cancelled assertion, independently of
+    // the API server's recovery endpoint.
+    await page.route(`${env.apiBase}/v1/device/recover/initiate`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          session_id: 'rec_cancel',
+          challenge: btoa('01234567890123456789012345678901'),
+          expires_at: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      })
+    })
     const out = await page.evaluate(async () =>
       (window as any).__vf.errorCatch('verify', { context: 'signup', userHandle: 'cancel_user' }),
     )
