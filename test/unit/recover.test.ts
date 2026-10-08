@@ -238,6 +238,43 @@ describe('passkey device recovery', () => {
     expect(create).not.toHaveBeenCalled()
   })
 
+  it('preserves other credentials when recovering the same device', async () => {
+    const store = memoryStore()
+    const knownCredential = {
+      credentialId: 'Y3JlZGVudGlhbA',
+      enrolledAt: '2026-10-01',
+      attestationLevel: 'hardware' as const,
+      transports: ['internal'],
+    }
+    const otherCredential = {
+      credentialId: 'b3RoZXItY3JlZGVudGlhbA',
+      enrolledAt: '2026-10-02',
+      attestationLevel: 'hardware' as const,
+      transports: ['hybrid'],
+    }
+    await store.put({
+      userHandle: '__default__',
+      deviceId: 'dvt_existing',
+      credentials: [knownCredential, otherCredential],
+      lastVerifiedAt: '2026-10-03',
+      configuredRpId: 'test.local',
+      schemaVersion: 1,
+    })
+    const client = Vouchflow.configure(CONFIG, { store, http: transport() })
+
+    await expect(client.recover()).resolves.toEqual({ deviceToken: 'dvt_existing' })
+    expect(store.records.get('__default__')).toMatchObject({
+      credentials: [knownCredential, otherCredential],
+      lastVerifiedAt: '2026-10-03',
+    })
+
+    await client.enroll({ forceNew: true })
+    const excluded = create.mock.calls[0]![0].publicKey.excludeCredentials
+    expect(excluded.map((credential: { id: ArrayBuffer }) =>
+      new TextDecoder().decode(credential.id),
+    )).toEqual(['credential', 'other-credential'])
+  })
+
   it('returns null for an unregistered passkey and does not create one', async () => {
     const store = memoryStore()
     const http = transport()

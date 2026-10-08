@@ -97,16 +97,24 @@ export async function performRecover(
     throw err
   }
 
+  const existing = await ctx.store.get(args.userHandle)
+  const matchingDevice = existing?.deviceId === complete.device_token ? existing : null
+  const recoveredCredential = {
+    credentialId: complete.credential_id,
+    enrolledAt: new Date().toISOString(),
+    attestationLevel: 'none' as const,
+    transports: [],
+  }
+  const credentials = matchingDevice
+    ? matchingDevice.credentials.some((credential) => credential.credentialId === complete.credential_id)
+      ? matchingDevice.credentials
+      : [...matchingDevice.credentials, recoveredCredential]
+    : [recoveredCredential]
   const device: DeviceRecord = {
     userHandle: args.userHandle,
     deviceId: complete.device_token,
-    credentials: [{
-      credentialId: complete.credential_id,
-      enrolledAt: new Date().toISOString(),
-      attestationLevel: 'none',
-      transports: [],
-    }],
-    lastVerifiedAt: null,
+    credentials,
+    lastVerifiedAt: matchingDevice?.lastVerifiedAt ?? null,
     configuredRpId: ctx.config.rpId,
     schemaVersion: 1,
   }
