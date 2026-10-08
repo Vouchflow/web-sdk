@@ -150,9 +150,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
           cache: npm
           registry-url: 'https://registry.npmjs.org'
 
@@ -180,9 +180,10 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
+        # npm trusted publishing (OIDC): no token. Node 24 ships an npm CLI
+        # new enough for the handshake; the trusted publisher is configured
+        # on npmjs.com for Vouchflow/web-sdk + web-sdk.yml.
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
