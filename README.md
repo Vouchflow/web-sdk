@@ -9,7 +9,7 @@ Passkey-backed device verification and high-assurance payload signing for browse
 
 - Zero runtime dependencies for the core
 - TypeScript-first; full types ship in the package
-- About 7.6 KB gzipped UMD, 10.1 KB gzipped ESM
+- UMD bundle size checked in CI
 - React entry point at `@vouchflow/web/react` (opt-in)
 - Compatible with strict CSP — no `eval`, no inline scripts
 
@@ -58,7 +58,7 @@ const recovered = await Vouchflow.shared.recover({ userHandle: 'user_abc' })
 if (recovered) console.log(recovered.deviceToken)
 ```
 
-`recover()` returns `null` if there is no usable passkey, the selected passkey belongs to another user handle, or the presented passkey has no active Vouchflow web device for this API key's customer and app. Other errors, including an invalid signature or network failure, are thrown. The `userHandle` defaults to `__default__`; use the same value across enrollment, recovery, verification, and signing. Call `enroll({ userHandle, forceNew: true })` only after explicit user confirmation that a new credential should be created. Creation excludes credential IDs already known to this browser.
+`recover()` returns `null` if there is no usable passkey, the selected passkey belongs to another user handle, or the presented passkey has no active Vouchflow web device for this API key's customer and app. Other errors, including an invalid signature or network failure, are thrown. The `userHandle` defaults to `__default__`; use the same value across enrollment, recovery, verification, and signing. For a new user, ask for explicit confirmation before calling `enroll({ userHandle, forceNew: true })`; only that option creates a credential. Creation excludes credential IDs already known to this browser.
 
 ## High-assurance payload signing
 
@@ -159,7 +159,7 @@ function SignInButton() {
 
 ## Email fallback
 
-When WebAuthn is unavailable, cancelled, or fails, request an email OTP. The session ID flows through the thrown error.
+When a verification ceremony is cancelled or fails after a session starts, you can request an email OTP using the session ID in the thrown error. A `passkey_recovery_required` error has no fallback session ID; handle it as described in [Error handling](#error-handling).
 
 ```ts
 import { Vouchflow, VouchflowError } from '@vouchflow/web'
@@ -169,12 +169,12 @@ try {
 } catch (err) {
   if (
     err instanceof VouchflowError &&
+    err.sessionId &&
     (err.code === 'biometric_cancelled' ||
-     err.code === 'biometric_failed' ||
-     err.code === 'webauthn_unavailable')
+     err.code === 'biometric_failed')
   ) {
     const fb = await Vouchflow.shared.requestFallback({
-      sessionId: err.sessionId!,
+      sessionId: err.sessionId,
       email: 'user@example.com',
       reason: 'biometric_failed',
     })
@@ -210,7 +210,7 @@ All errors are instances of `VouchflowError` with a discriminated `code` field. 
 | --- | --- |
 | `invalid_config` | Fix at init (most often an rpId mismatch with the current origin) |
 | `not_configured` | Call `Vouchflow.configure()` before `Vouchflow.shared` |
-| `not_in_browser` | Don't call `verify()`/`signPayload()` from Node / SSR |
+| `not_in_browser` | See [Browser support](#browser-support) for browser-only calls |
 | `webauthn_unavailable` | Offer email fallback |
 | `platform_authenticator_unavailable` | Offer security-key or email fallback |
 | `biometric_cancelled` | Offer retry; `err.sessionId` is set |
@@ -246,17 +246,11 @@ In Node.js / SSR, `verify()`, `signPayload()`, `enroll()`, and `recover()` throw
 
 ## Bundle size
 
-| Build | Size (gzipped) |
-| --- | --- |
-| UMD (`dist/umd/vouchflow.min.js`) | **7.6 KB** |
-| ESM (`dist/index.js`) | **10.1 KB** (tree-shakeable) |
-| React entry (`dist/react/index.js`) | +1.4 KB |
+CI fails if the gzipped UMD bundle exceeds 12 KB. The badge at the top of this page shows the current published package size.
 
-CI fails if either core bundle exceeds the configured budget.
+## More documentation
 
-## Spec
-
-The full specification — including architectural rationale, IndexedDB schema, error mapping rules, and the WebAuthn ceremony details — lives at [`docs/spec.md`](./docs/spec.md). Customer-facing docs are at [vouchflow.dev/docs/web-sdk](https://vouchflow.dev/docs/web-sdk).
+Customer-facing docs are at [vouchflow.dev/docs/web-sdk](https://vouchflow.dev/docs/web-sdk).
 
 ## Contributing
 

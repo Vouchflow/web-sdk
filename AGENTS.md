@@ -2,7 +2,7 @@
 
 This file is the project's committed home for project-intrinsic agent knowledge: build, test, release, architecture, and sharp-edge notes that should travel with the code.
 
-- Enrollment safety: a passkey may exist without this browser's IndexedDB record. Creating another credential with the same WebAuthn user ID can replace the synced passkey and invalidate data encrypted with its PRF. Preserve the recovery-before-create flow in `src/enroll/recover.ts`, `src/core/client.ts`, and the automatic enrollment paths in `src/verify/`.
+- Enrollment safety: a passkey may exist without this browser's IndexedDB record. Creating another credential with the same WebAuthn user ID can replace the synced passkey and invalidate data encrypted with its PRF. Preserve recovery for missing local enrollment in `src/enroll/recover.ts`, `src/core/client.ts`, and `src/verify/`; see the README for caller guidance.
 - Use the scripts in `package.json` for type checking, unit tests, and builds. Recovery regression coverage is in `test/unit/recover.test.ts`.
 
 ## Maintaining this file
