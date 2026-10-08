@@ -6,6 +6,7 @@ import { canonicalize } from './canonicalize.js'
 import { bytesToBase64url, utf8ToBytes } from '../core/encoding.js'
 import { webauthnGet } from './webauthn-get.js'
 import { performEnroll } from '../enroll/enroll.js'
+import { performRecover } from '../enroll/recover.js'
 import { StateStore } from '../core/state-store.js'
 import { Confidence, SignResult } from '../types.js'
 
@@ -48,14 +49,13 @@ export async function performSignPayload(
   const userHandle = args.userHandle ?? '__default__'
   let device = await ctx.store.get(userHandle)
 
-  // Auto-enroll on first sign just like verify(), so signPayload() is a
-  // self-sufficient call.
+  // Restore a synced passkey before considering a new enrollment.
   if (!device || device.credentials.length === 0) {
-    const enrolled = await performEnroll(
-      { config: ctx.config, http: ctx.http, store: ctx.store },
-      { userHandle, signal: args.signal },
-    )
-    device = enrolled.device
+    device = await performRecover(ctx, { userHandle, signal: args.signal })
+    if (!device) {
+      const enrolled = await performEnroll(ctx, { userHandle, signal: args.signal })
+      device = enrolled.device
+    }
   }
 
   const minConfidence = args.minConfidence ?? 'high'
@@ -157,4 +157,3 @@ function base64ToBytes(b64: string): Uint8Array {
   for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i)
   return out
 }
-

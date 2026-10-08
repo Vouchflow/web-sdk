@@ -9,6 +9,7 @@ import {
 } from '../core/encoding.js'
 import { webauthnGet } from './webauthn-get.js'
 import { performEnroll } from '../enroll/enroll.js'
+import { performRecover } from '../enroll/recover.js'
 import { StateStore } from '../core/state-store.js'
 import { Confidence, VerifyResult } from '../types.js'
 
@@ -60,14 +61,13 @@ export async function performVerify(
   const userHandle = args.userHandle ?? '__default__'
   let device = await ctx.store.get(userHandle)
 
-  // Auto-enroll if no local state. The mobile SDKs do the same on first call —
-  // it's the documented zero-config UX.
+  // Restore a synced passkey before considering a new enrollment.
   if (!device || device.credentials.length === 0) {
-    const enrolled = await performEnroll(
-      { config: ctx.config, http: ctx.http, store: ctx.store },
-      { userHandle, signal: args.signal },
-    )
-    device = enrolled.device
+    device = await performRecover(ctx, { userHandle, signal: args.signal })
+    if (!device) {
+      const enrolled = await performEnroll(ctx, { userHandle, signal: args.signal })
+      device = enrolled.device
+    }
   }
 
   if (device.configuredRpId !== ctx.config.rpId) {

@@ -1,11 +1,13 @@
 import { ResolvedConfig } from '../core/config.js'
 import { mapDomException, VouchflowError } from '../core/errors.js'
-import { utf8ToBytes } from '../core/encoding.js'
+import { base64urlToBytes, utf8ToBytes } from '../core/encoding.js'
 
 export interface CreateOptions {
   config: ResolvedConfig
   userHandle: string
   challenge: Uint8Array
+  /** Locally known credentials must never be replaced during creation. */
+  excludeCredentialIds?: string[]
   /** When true, requires platform authenticator (Touch ID / Windows Hello). */
   requirePlatformAuthenticator?: boolean
   signal?: AbortSignal
@@ -36,6 +38,10 @@ export async function webauthnCreate(opts: CreateOptions): Promise<CreateResult>
       displayName: opts.userHandle,
     },
     challenge: toArrayBuffer(opts.challenge),
+    excludeCredentials: opts.excludeCredentialIds?.map((id) => ({
+      type: 'public-key',
+      id: toArrayBuffer(base64urlToBytes(id)),
+    })) ?? [],
     pubKeyCredParams: [
       { type: 'public-key', alg: -7 },    // ES256 (preferred — matches mobile)
       { type: 'public-key', alg: -257 },  // RS256

@@ -22,6 +22,7 @@ export type {
   CapabilitySupport,
   EnrollmentState,
   EnrollOptions,
+  RecoverOptions,
   ForgetOptions,
   VerifyConditionalOptions,
   FallbackReason,
